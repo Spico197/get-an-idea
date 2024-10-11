@@ -1,2 +1,6 @@
 rich
 stanza
+zhipuai
+python-dotenv
+loguru
+tqdm

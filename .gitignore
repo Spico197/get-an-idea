@@ -132,3 +132,6 @@ debug.ipynb
 abs_ie.json
 out.json
 outs/*.json
+data/**/*.pdf
+data/**/*.json
+data/**/*.jsonl
