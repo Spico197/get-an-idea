@@ -56,13 +56,13 @@ def clean_ins(ins):
 if __name__ == "__main__":
     # unzip -p archive.zip arxiv-metadata-oai-snapshot.json | wc -l
     # fmt: off
-    # start_date = "1900-11-25"
-    start_date = "2019-01-01"
+    start_date = "1900-11-25"
+    # start_date = "2019-01-01"
 
     # n_tot = 2564718  # arxiv old
     n_tot = 2575090  # arxiv 20241006
     data_type = "arxiv"
-    data_path = "archive-20241006.zip"
+    data_path = "data/archive-20241006.zip"
 
     # n_tot = 100757  # acl 20241008
     # data_type = "acl"
@@ -81,11 +81,13 @@ if __name__ == "__main__":
         "cross_domain": ["cross-domain", "cross domain"],
         "ner": ["named entity recognition", " ner "],
         "srl": ["semantic role labeling"],
+        "task_planning": [" task planning "],
     }
     special_joints = {
         "llm_moe": ["llm", "moe"],
         "llm_rlhf": ["llm", "rlhf"],
         "llm_safety": ["llm", "safety"],
+        "llm_task_planning": ["llm", "task_planning"],
         "llm_moe_rlhf": ["llm", "moe", "rlhf"],
         "cross_domain_ner": ["cross_domain", "ner"],
         "cross_domain_srl": ["cross_domain", "srl"],

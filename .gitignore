@@ -135,3 +135,8 @@ outs/*.json
 data/**/*.pdf
 data/**/*.json
 data/**/*.jsonl
+data/**/*.bib.gz
+data/**/*.zip
+results/**/*.json
+results/**/*.pdf
+results/**/info.txt

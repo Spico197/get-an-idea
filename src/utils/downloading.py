@@ -5,7 +5,7 @@ from tqdm import tqdm
 from src.utils.io import load_json
 
 
-def download_pdf(url: str, save_path: str):
+def download_pdf(url: str, save_path: str, show_progress_bar: bool = True):
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
@@ -22,6 +22,7 @@ def download_pdf(url: str, save_path: str):
         unit_scale=True,
         unit_divisor=1024,
         ncols=75,
+        disable=not show_progress_bar,
     ) as progress_bar:
         for data in response.iter_content(block_size):
             size = file.write(data)

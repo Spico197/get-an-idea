@@ -1,16 +1,23 @@
 import os
 import re
+import sys
 import json
+import time
 from pathlib import Path
+from datetime import datetime
 
 from tqdm import tqdm
 from loguru import logger
 from zhipuai import ZhipuAI
 from dotenv import load_dotenv
 
+from src.utils.io import load_json, dump_jsonlines
+from src.utils.downloading import download_pdf
+
 load_dotenv()
 
 API_KEY = os.getenv("ZHIPUAI_API_KEY")
+# glm-4-flash is a free model
 MODEL_TYPE = "glm-4-flash"
 PROMPT = """介绍一下作者单位、前人工作以及他们仍未解决的问题、这篇论文在研究的主要问题、对应的解决方案、新的结论或发现、当前方法存在的局限性和其它可以继续研究的内容，并以JSON的格式返回。注意内容要尽可能回答完全，不要出现省略号。
 返回格式的例子如下，注意不要照抄例子里的内容，要结合论文的实际内容进行总结：
@@ -52,7 +59,9 @@ class ModelAPI(object):
 
     def extract_file_content(self, filepath: str) -> str:
         # 大小：单个文件50M、总数限制为100个文件
-        file_object = self.client.files.create(file=Path(filepath), purpose="file-extract")
+        file_object = self.client.files.create(
+            file=Path(filepath), purpose="file-extract"
+        )
         file_content = self.client.files.content(file_id=file_object.id).content
         file_content = json.loads(file_content)["content"]
         _ = self.client.files.delete(file_id=file_object.id)
@@ -101,11 +110,11 @@ class ModelAPI(object):
         return {
             "custom_id": paper_id,
             "method": "POST",
-            "url": "/v4/chat/completions", 
+            "url": "/v4/chat/completions",
             "body": {
-                "model": self.model, #每个batch文件只能包含对单个模型的请求,支持 glm-4-0520 glm-4-air、glm-4-flash、glm-4、glm-3-turbo.
+                "model": self.model,  # 每个batch文件只能包含对单个模型的请求,支持 glm-4-0520 glm-4-air、glm-4-flash、glm-4、glm-3-turbo.
                 "messages": self.get_messages(paper_filepath),
-            }
+            },
         }
 
 
@@ -122,13 +131,14 @@ def get_download_links(input_filepath, output_filepath):
 
 def find_difference(parent_file, subset_file):
     import re
+
     def replace_url(url):
         return re.sub(r"v(\d+?).pdf", ".pdf", url)
 
-    with open(parent_file, 'r') as file:
+    with open(parent_file, "r") as file:
         parent_urls = set([replace_url(url) for url in file.read().splitlines()])
 
-    with open(subset_file, 'r') as file:
+    with open(subset_file, "r") as file:
         subset_urls = set([replace_url(url) for url in file.read().splitlines()])
 
     difference = parent_urls - subset_urls
@@ -163,13 +173,47 @@ def summary_main():
         else:
             logger.debug(f"SKIP {paper['id']} - {paper['title']}")
         # results.append(paper)
-    
+
     # with open("llm_safety_paper_summaries.json", "w", encoding="utf8") as fout:
     #     json.dump(results, fout, indent=2, ensure_ascii=False)
 
     with open("llm_safety_paper_batch_info.jsonl", "w", encoding="utf8") as fout:
         for ins in results:
             fout.write(f"{json.dumps(ins, ensure_ascii=False)}\n")
+
+
+def summarize_subsets(subsets, data_info_dir, result_dir):
+    output_dir = Path(result_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pdf_dir = output_dir / "pdfs"
+    pdf_dir.mkdir(parents=True, exist_ok=True)
+
+    model = ModelAPI(MODEL_TYPE, API_KEY)
+
+    for subset in subsets:
+        data_info = load_json(f"{data_info_dir}/{subset}.json")
+        (output_dir / subset).mkdir(parents=True, exist_ok=True)
+        mid_info_path = output_dir / subset / "mid_info.json"
+        final_info_path = output_dir / subset / "final_result.json"
+        mid_info_f = open(mid_info_path, "a", encoding="utf8")
+        for paper in tqdm(data_info, ncols=80, desc=subset):
+            paper_id = paper["id"]
+            paper_url = f"https://arxiv.org/pdf/{paper_id}.pdf"
+            out_pdf_path = pdf_dir / f"{paper_id}.pdf"
+            max_retries = 5
+            while max_retries > 0:
+                try:
+                    download_pdf(paper_url, out_pdf_path, show_progress_bar=False)
+                    result = model.summarize_paper(out_pdf_path)
+                    paper.update({"summary_results": result})
+                    mid_info_f.write(f"{json.dumps(paper, ensure_ascii=False, indent=2)}\n")
+                    break
+                except Exception as err:
+                    logger.error(f"ERR: {err}")
+                max_retries -= 1
+                time.sleep(10)
+        mid_info_f.close()
+        dump_jsonlines(data_info, final_info_path)
 
 
 if __name__ == "__main__":
@@ -188,4 +232,15 @@ if __name__ == "__main__":
     # for url in difference:
     #     print(url)
 
-    summary_main()
+    # summary_main()
+
+    logger.remove()
+    logger.add(sys.stdout, level="INFO")
+    Path("logs").mkdir(parents=True, exist_ok=True)
+    current_datetime = datetime.now().strftime("%b %d %Y %H-%M-%S")
+    logger.add(f"logs/{current_datetime}.log")
+
+    subsets = ["tool", "task_planning", "docee", "ee", "gui", "moe"]
+    data_info_dir = "results/arxiv/1900-11-25"
+    result_dir = "results/arxiv/1900-11-25/summaries"
+    summarize_subsets(subsets, data_info_dir, result_dir)
